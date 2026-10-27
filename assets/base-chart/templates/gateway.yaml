@@ -243,6 +243,20 @@ spec:
     name: tcp-route-20
     port: 32019
     protocol: TCP
+  {{- if .Values.enableIdentityAwareRouting }}
+  - allowedRoutes:
+      kinds:
+      - group: gateway.networking.k8s.io
+        kind: TLSRoute
+      namespaces:
+        from: All
+    hostname: "*.apps.identity"
+    name: apps-identity-tls
+    port: 443
+    protocol: TLS
+    tls:
+      mode: Passthrough
+  {{- end }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -317,4 +331,42 @@ spec:
     - backendRefs:
       - name: cf-tcp-router
         port: {{ add 32000 $index }}
+{{- end }}
+{{- if .Values.enableIdentityAwareRouting }}
+---
+# Separate Service alias for TLS Passthrough. BackendTLSPolicy targets the
+# 'gorouter' Service by name, which would cause double-TLS wrapping on the
+# passthrough stream. This alias targets the same pods but is invisible to
+# BackendTLSPolicy, so the raw TLS bytes reach the gorouter intact.
+apiVersion: v1
+kind: Service
+metadata:
+  name: gorouter-passthrough
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: gorouter
+  ports:
+    - name: tls
+      port: 443
+      targetPort: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: apps-identity
+  namespace: {{ .Release.Namespace }}
+spec:
+  hostnames:
+    - "*.apps.identity"
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: istio-gateway
+      namespace: {{ .Release.Namespace }}
+      sectionName: apps-identity-tls
+  rules:
+    - backendRefs:
+        - name: gorouter-passthrough
+          port: 443
 {{- end }}
