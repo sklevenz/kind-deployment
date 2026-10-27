@@ -36,3 +36,5 @@ DNS.11              = log-api
 DNS.12              = log-cache
 DNS.13              = log_cache
 DNS.14              = reverse-log-proxy
+DNS.15              = *.apps.identity
+DNS.16              = *.mycomp.apps.identity

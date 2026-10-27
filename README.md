@@ -94,6 +94,37 @@ Inputs (all optional):
 - `use-latest-versions` (boolean, default `false`): sync to the latest `develop` versions of cf-deployment before deploying.
 - `additional-values-files` (string, default ''): comma-separated list of [Helmfile values](#custom-helmfile-values) files, merged last. Supported formats are plain YAML (`.yaml`), Go templates that render to YAML (`.yaml.gotmpl`) and HCL (`.hcl`); the file extension determines how a file is interpreted. Use it to override any value, e.g. a chart version (`charts.capi.version`). Must be absolute paths, e.g. `${{ github.workspace }}/capi-values.yaml`, since Helmfile runs from the checked-out `kind-deployment` directory.
 
+## Identity-Aware Routing
+
+Identity-aware routing enables apps to identify their caller's TLS client certificate via the
+`X-Forwarded-Client-Cert` (XFCC) header. A dedicated domain `*.apps.identity` is served by
+the gorouter via TLS passthrough — the Istio gateway forwards the raw TLS stream without
+terminating it, so the gorouter receives the client certificate intact and forwards it as XFCC.
+
+Enable it by setting the environment variable before running `make up`:
+
+```bash
+ENABLE_IDENTITY_AWARE_ROUTING=true make up
+```
+
+Or via the `setup-cf` GitHub Action:
+
+```yaml
+- uses: cloudfoundry/kind-deployment/.github/actions/setup-cf@main
+  with:
+    enable-identity-aware-routing: true
+```
+
+**How it works:**
+
+1. `*.apps.identity` is resolved by CoreDNS to the Istio gateway (wildcard rewrite rule injected automatically).
+2. The Istio gateway has a `TLS Passthrough` listener for this hostname on port 443.
+3. A `TLSRoute` routes the stream to the gorouter service.
+4. The gorouter serves the `*.apps.identity` SNI using the existing `all-in-one` certificate and forwards any incoming XFCC header to the backend app (`forwarded_client_cert: always_forward`).
+
+> **Note:** Client certificate *verification* is not enforced — any client can call `*.apps.identity`.
+> This matches the intended dev/test use case where you want to inspect XFCC without strict mTLS.
+
 ## Unsupported Features
 
 - Routing isolation segments are not fully feature complete since this relies on more than one gateway which is not possible to realize in a local kind setup (see [FAQ](./docs/faq.md))

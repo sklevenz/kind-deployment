@@ -62,7 +62,7 @@ releases:
       {{- if eq .Values.cni "calico" }}
       - events: ["presync"]
         showlogs: true
-        command: "/bin/sh"
+*        command: "/bin/sh"
         args:
           - "-c"
           - |
@@ -122,6 +122,7 @@ releases:
       - cni: {{ .Values.cni }}
         systemDomain: {{ .Values.systemDomain }}
         appsDomain: {{ .Values.appsDomain }}
+        enableIdentityAwareRouting: {{ .Values.enableIdentityAwareRouting }}
         gateway:
           infrastructure:
             {{- toYaml .Values.gateway.infrastructure | nindent 12 }}
@@ -235,6 +236,45 @@ releases:
           certificateSecret: all-in-one-tls
         udpForwarder:
           certificateSecret: all-in-one-tls
+
+  {{- if .Values.enableIdentityAwareRouting }}
+    hooks:
+      - events: ["postsync"]
+        showlogs: true
+        command: "/bin/sh"
+        args:
+          - "-c"
+          - |
+            NS={{ .Values.systemNamespace }}
+
+            # --- Patch gorouter-config Secret to add domains for *.apps.identity ---
+            # Change forwarded_client_cert from always_forward to forward so the
+            # gorouter sets XFCC from the TLS client cert when one is presented,
+            # without requiring one (no domains/ca_certs needed).
+            current=$(kubectl -n "$NS" get secret gorouter-config \
+              -o jsonpath='{.data.gorouter\.yaml}' | base64 -d)
+            if ! echo "$current" | grep -q "forwarded_client_cert: forward$"; then
+              patched=$(echo "$current" \
+                | sed 's/forwarded_client_cert: always_forward/forwarded_client_cert: forward/')
+              encoded=$(printf '%s' "$patched" | base64 | tr -d '\n')
+              kubectl -n "$NS" patch secret gorouter-config --type=json \
+                -p="$(jq -n --arg v "$encoded" '[{"op":"replace","path":"/data/gorouter.yaml","value":$v}]')"
+              kubectl -n "$NS" rollout restart deployment/gorouter
+              kubectl -n "$NS" rollout status deployment/gorouter --timeout=120s
+            fi
+
+            # --- Patch CoreDNS to resolve *.apps.identity → Istio gateway ---
+            corefile=$(kubectl -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}')
+            if ! echo "$corefile" | grep -q "apps\\.identity"; then
+              patched=$(echo "$corefile" | sed '/kubernetes/i\
+            rewrite name regex (.*)\\.apps\\.identity istio-gateway-istio.{{ .Values.systemNamespace }}.svc.cluster.local answer auto\
+            ')
+              kubectl -n kube-system patch configmap coredns --type=json \
+                -p="$(jq -n --arg cf "$patched" '[{"op":"replace","path":"/data/Corefile","value":$cf}]')"
+              kubectl -n kube-system rollout restart deployment/coredns
+              kubectl -n kube-system rollout status deployment/coredns --timeout=60s
+            fi
+  {{- end }}
 
   - name: tcp-routing
     namespace: {{ .Values.systemNamespace }}

@@ -37,6 +37,11 @@ inputs:
     required: false
     type: string
     default: ""
+  enable-identity-aware-routing:
+    description: Whether to enable identity-aware routing via the *.apps.identity domain
+    required: false
+    type: boolean
+    default: false
   load-images:
     description: Comma-separated list of images to load from daemon into cluster.
     required: false
@@ -81,6 +86,7 @@ runs:
       env:
         INSTALL_OPTIONAL_COMPONENTS: ${{ inputs.install-optional-components }}
         ADDITIONAL_VALUES_FILES: ${{ inputs.additional-values-files }}
+        ENABLE_IDENTITY_AWARE_ROUTING: ${{ inputs.enable-identity-aware-routing }}
       run: |
         if [ "${{ inputs.isolated-cell }}" = "true" ]; then
           echo '- role: worker

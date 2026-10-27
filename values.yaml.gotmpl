@@ -8,6 +8,7 @@ systemDomain: "cf.{{ "CLUSTER_DOMAIN" | env | default "127-0-0-1.nip.io" }}"
 appsDomain: "apps.{{ "CLUSTER_DOMAIN" | env | default "127-0-0-1.nip.io" }}"
 localDeployment: {{ "LOCAL_DEPLOYMENT" | env | default "true" }}
 installOptionalComponents: {{ "INSTALL_OPTIONAL_COMPONENTS" | env | default "true" }}
+enableIdentityAwareRouting: {{ "ENABLE_IDENTITY_AWARE_ROUTING" | env | default "false" }}
 gateway:
   infrastructure: {}
 postgresql: {}
