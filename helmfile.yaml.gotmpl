@@ -62,7 +62,7 @@ releases:
       {{- if eq .Values.cni "calico" }}
       - events: ["presync"]
         showlogs: true
-*        command: "/bin/sh"
+        command: "/bin/sh"
         args:
           - "-c"
           - |
